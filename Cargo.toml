@@ -1,6 +1,6 @@
 [package]
 name = "barentp"
-version = "1.0.0"
+version = "1.1.0"
 edition = "2024"
 description = "An NTP client library for use with and without the standard library."
 license-file = "LICENSE"

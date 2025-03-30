@@ -17,12 +17,10 @@ where
 {
     let mut buf = [0; SntpMessage::BUFFER_SIZE];
     let mut msg = SntpMessage::new_v4();
-    msg.write_to_buffer(&mut buf);
-    transport.send(&buf).map_err(Error::TransportSendError)?;
-    transport
-        .recv(&mut buf)
-        .map_err(Error::TransportRecvError)?;
-    msg.read_from_buffer(&buf);
+    msg.write_to_buffer(&mut buf)?;
+    transport.send(&buf).map_err(Error::TransportSend)?;
+    transport.recv(&mut buf).map_err(Error::TransportRecv)?;
+    msg.read_from_buffer(&buf)?;
     Ok(msg)
 }
 

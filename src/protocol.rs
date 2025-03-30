@@ -1,3 +1,5 @@
+use crate::error::SntpProtocolError;
+
 /// SNTP message format
 ///
 /// ```text
@@ -75,7 +77,14 @@ impl SntpMessage {
         }
     }
 
-    pub fn write_to_buffer(&self, buffer: &mut [u8]) {
+    pub fn write_to_buffer(&self, buffer: &mut [u8]) -> Result<(), SntpProtocolError> {
+        if buffer.len() < Self::BUFFER_SIZE {
+            return Err(SntpProtocolError::SntpBufferTooSmall {
+                size: buffer.len(),
+                expected: Self::BUFFER_SIZE,
+            });
+        }
+
         let leap_indicator = match self.leap_indicator {
             LeapIndicator::NoWarning => 0,
             LeapIndicator::LastMinuteHas61Seconds => 1,
@@ -110,9 +119,18 @@ impl SntpMessage {
         buffer[24..32].copy_from_slice(&self.originate_timestamp.to_be_bytes());
         buffer[32..40].copy_from_slice(&self.receive_timestamp.to_be_bytes());
         buffer[40..48].copy_from_slice(&self.transmit_timestamp.to_be_bytes());
+
+        Ok(())
     }
 
-    pub fn read_from_buffer(&mut self, buffer: &[u8]) {
+    pub fn read_from_buffer(&mut self, buffer: &[u8]) -> Result<(), SntpProtocolError> {
+        if buffer.len() < Self::BUFFER_SIZE {
+            return Err(SntpProtocolError::SntpBufferTooSmall {
+                size: buffer.len(),
+                expected: Self::BUFFER_SIZE,
+            });
+        }
+
         self.mode = match buffer[0] & 0x7 {
             0 => Mode::Reserved,
             1 => Mode::SymmetricActive,
@@ -122,13 +140,13 @@ impl SntpMessage {
             5 => Mode::Broadcast,
             6 => Mode::Reserved6,
             7 => Mode::Reserved7,
-            _ => unreachable!(),
+            invalid => return Err(SntpProtocolError::InvalidSntpMode(invalid)),
         };
 
         self.version = match (buffer[0] >> 3) & 0x7 {
             4 => Version::V4,
             3 => Version::V3,
-            v => unreachable!("version is {}", v),
+            invalid => return Err(SntpProtocolError::InvalidSntpVersion(invalid)),
         };
 
         self.leap_indicator = match (buffer[0] >> 6) & 0x3 {
@@ -136,7 +154,9 @@ impl SntpMessage {
             1 => LeapIndicator::LastMinuteHas61Seconds,
             2 => LeapIndicator::LastMinuteHas59Seconds,
             3 => LeapIndicator::AlarmCondition,
-            _ => unreachable!(),
+            invalid => {
+                return Err(SntpProtocolError::InvalidSntpLeadIndicator(invalid));
+            }
         };
 
         self.stratum = buffer[1];
@@ -162,6 +182,8 @@ impl SntpMessage {
             buffer[40], buffer[41], buffer[42], buffer[43], buffer[44], buffer[45], buffer[46],
             buffer[47],
         ]);
+
+        Ok(())
     }
 }
 
