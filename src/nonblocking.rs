@@ -2,6 +2,7 @@ use crate::{
     error::Error,
     protocol::{SntpMessage, Timestamp},
 };
+use core::future::Future;
 
 pub trait NtpTransportAsync {
     type SendError;
