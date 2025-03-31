@@ -224,6 +224,10 @@ pub enum Version {
 pub struct Timestamp(pub(crate) u64);
 
 impl Timestamp {
+    pub fn new(seconds: u32, fraction: u32) -> Self {
+        Self(((seconds as u64) << 32) | (fraction as u64))
+    }
+
     pub(crate) fn to_be_bytes(&self) -> [u8; 8] {
         self.0.to_be_bytes()
     }
@@ -263,58 +267,70 @@ impl Timestamp {
         self.0 & (1 << 63) != 0
     }
 
+    /// Seconds since the NTP epoch. See [`Timestamp::msb_set`] for more information.
     pub fn seconds(&self) -> u32 {
         (self.0 >> 32) as u32
     }
 
+    /// Fractional part of [`Timestamp::seconds`].
     pub fn seconds_fraction(&self) -> u32 {
         self.0 as u32
+    }
+
+    /// Microseconds since the NTP epoch. See [`Timestamp::msb_set`] for more information.
+    pub fn microseconds(&self) -> u64 {
+        (self.0 >> 32) * 1_000_000 + ((self.0 & 0xFFFFFFFF) * 1_000_000 / 0x100000000)
+    }
+
+    /// Milliseconds since the NTP epoch. See [`Timestamp::msb_set`] for more information.
+    pub fn milliseconds(&self) -> u64 {
+        (self.0 >> 32) * 1_000 + ((self.0 & 0xFFFFFFFF) * 1_000 / 0x100000000)
+    }
+
+    /// Microseconds since the UNIX epoch.
+    pub fn utc_micros(&self) -> i64 {
+        let ntp_epoch_micros = self.microseconds() as i64;
+
+        if self.msb_set() {
+            ntp_epoch_micros - 2208988800000000i64
+        } else {
+            ntp_epoch_micros + 2085978496000000i64
+        }
+    }
+
+    /// Milliseconds since the UNIX epoch.
+    pub fn utc_millis(&self) -> i64 {
+        let ntp_epoch_micros = self.milliseconds() as i64;
+
+        if self.msb_set() {
+            ntp_epoch_micros - 2208988800000i64
+        } else {
+            ntp_epoch_micros + 2085978496000i64
+        }
+    }
+
+    /// Seconds since the UNIX epoch.
+    pub fn utc_seconds(&self) -> i64 {
+        let seconds = self.seconds() as i64;
+        if self.msb_set() {
+            seconds - 2208988800i64
+        } else {
+            seconds + 2085978496i64
+        }
     }
 }
 
 #[cfg(feature = "chrono")]
 impl From<Timestamp> for chrono::NaiveDateTime {
     fn from(timestamp: Timestamp) -> Self {
-        let epoch = if timestamp.msb_set() {
-            chrono::NaiveDateTime::new(
-                chrono::NaiveDate::from_ymd_opt(1900, 1, 1).unwrap(),
-                chrono::NaiveTime::from_hms_opt(0, 0, 0).unwrap(),
-            )
-        } else {
-            chrono::NaiveDateTime::new(
-                chrono::NaiveDate::from_ymd_opt(2036, 2, 7).unwrap(),
-                chrono::NaiveTime::from_hms_opt(6, 28, 16).unwrap(),
-            )
-        };
-
-        let micros_since_epoch = (timestamp.seconds() as i64) * 1_000_000
-            + (((timestamp.seconds_fraction() as i64) * 1_000_000) / 0x100000000);
-        let duration_since_epoc = chrono::Duration::microseconds(micros_since_epoch);
-
-        epoch + duration_since_epoc
+        chrono::DateTime::<chrono::Utc>::from(timestamp).naive_utc()
     }
 }
 
 #[cfg(feature = "chrono")]
 impl From<Timestamp> for chrono::DateTime<chrono::Utc> {
     fn from(timestamp: Timestamp) -> Self {
-        let epoch = if timestamp.msb_set() {
-            chrono::NaiveDateTime::new(
-                chrono::NaiveDate::from_ymd_opt(1900, 1, 1).unwrap(),
-                chrono::NaiveTime::from_hms_opt(0, 0, 0).unwrap(),
-            )
-        } else {
-            chrono::NaiveDateTime::new(
-                chrono::NaiveDate::from_ymd_opt(2036, 2, 7).unwrap(),
-                chrono::NaiveTime::from_hms_opt(6, 28, 16).unwrap(),
-            )
-        }
-        .and_utc();
-
-        let micros_since_epoch = (timestamp.seconds() as i64) * 1_000_000
-            + (((timestamp.seconds_fraction() as i64) * 1_000_000) / 0x100000000);
-        let duration_since_epoc = chrono::Duration::microseconds(micros_since_epoch);
-
-        epoch + duration_since_epoc
+        chrono::DateTime::<chrono::Utc>::from_timestamp_micros(timestamp.utc_micros())
+            .expect("timestamp is out of range")
     }
 }

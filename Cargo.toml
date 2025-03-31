@@ -22,7 +22,7 @@ name = "stdlib"
 required-features = ["std", "chrono"]
 
 [[test]]
-name = "compare_to_system_time"
+name = "timestamp_test"
 required-features = ["std", "chrono"]
 
 [dev-dependencies]
